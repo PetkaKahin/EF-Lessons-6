@@ -14,7 +14,7 @@ class PingJob implements ShouldQueue
 
     public function handle(): void
     {
-        $message = 'ping processed: '. now()->toISOString();
+        $message = 'ping processed: '.now()->toISOString();
 
         Log::info($message);
     }
