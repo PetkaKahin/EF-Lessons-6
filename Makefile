@@ -1,5 +1,6 @@
 COMPOSE_ENV=$(if $(wildcard .env),--env-file .env,)
 COMPOSE=docker compose $(COMPOSE_ENV)
+ARGS=$(filter-out $@,$(MAKECMDGOALS))
 
 .PHONY: init up down artisan test composer queue queue-restart
 
@@ -20,13 +21,18 @@ composer:
 	$(COMPOSE) exec php composer install
 
 artisan:
-	$(COMPOSE) exec php php artisan
+	$(COMPOSE) exec php php artisan $(ARGS)
 
 test:
-	$(COMPOSE) exec php php artisan test
+	$(COMPOSE) exec php ./vendor/bin/pest
 
 queue:
 	$(COMPOSE) exec php php artisan queue:work
 
 queue-restart:
 	$(COMPOSE) exec php php artisan queue:restart
+
+ifeq ($(firstword $(MAKECMDGOALS)),artisan)
+%:
+	@:
+endif
