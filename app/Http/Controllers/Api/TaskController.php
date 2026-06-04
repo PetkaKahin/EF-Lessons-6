@@ -21,20 +21,22 @@ class TaskController extends Controller
     private const int DEFAULT_PER_PAGE = 15;
 
     public function __construct(
-        private TaskRepositoryInterface $taskRepository,
-        private CreateTask $createTask,
-        private UpdateTask $updateTask,
-    ) {}
+        private readonly TaskRepositoryInterface $taskRepository,
+        private readonly CreateTask              $createTask,
+        private readonly UpdateTask              $updateTask,
+    )
+    {
+    }
 
     public function index(IndexTaskRequest $request): AnonymousResourceCollection
     {
         $validated = $request->validated();
-        $perPage = (int) ($validated['per_page'] ?? self::DEFAULT_PER_PAGE);
+        $perPage = (int)($validated['per_page'] ?? self::DEFAULT_PER_PAGE);
 
         $tasks = $this->taskRepository->paginate(
             $validated['status'] ?? null,
             $perPage,
-            array_key_exists('user_id', $validated) ? (int) $validated['user_id'] : null,
+            array_key_exists('user_id', $validated) ? (int)$validated['user_id'] : null,
         );
 
         return TaskResource::collection($tasks);
@@ -58,7 +60,7 @@ class TaskController extends Controller
     {
         $task = $this->taskRepository->findOrFail($taskId);
         $validated = $request->validated();
-        $actorId = (int) ($validated['completed_by_user_id'] ?? $task->user_id);
+        $actorId = (int)($validated['completed_by_user_id'] ?? $task->user_id);
 
         unset($validated['completed_by_user_id']);
 

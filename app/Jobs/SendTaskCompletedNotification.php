@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace App\Jobs;
 
+use App\Application\Logs\Actions\AppendJsonLogLine;
+use App\Application\Logs\Enums\LogType;
+use App\Application\Messages\Actions\MarkMessageProcessed;
+use App\Events\TaskCompletedNotificationFailed;
 use App\Models\Task;
 use DateTimeInterface;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
-use Illuminate\Support\Facades\File;
 use RuntimeException;
 use Throwable;
 
@@ -35,12 +38,20 @@ class SendTaskCompletedNotification implements ShouldQueue
         return [5, 15, 30];
     }
 
-    public function handle(): void
-    {
+    public function handle(
+        MarkMessageProcessed $markMessageProcessed,
+        AppendJsonLogLine $appendJsonLogLine,
+    ): void {
         $taskId = (int) $this->task->id;
 
         if ($taskId % 5 === 0) {
             throw new RuntimeException("Simulated notification failure for task {$taskId}.");
+        }
+
+        $idempotencyKey = "notification:{$taskId}";
+
+        if (! $markMessageProcessed->handle($idempotencyKey)) {
+            return;
         }
 
         $payload = [
@@ -50,24 +61,20 @@ class SendTaskCompletedNotification implements ShouldQueue
             'channel' => 'email',
         ];
 
-        File::ensureDirectoryExists(storage_path('logs'));
-        File::append(
-            storage_path('logs/notifications.log'),
-            json_encode($payload, JSON_THROW_ON_ERROR).PHP_EOL,
-        );
+        try {
+            $appendJsonLogLine->handle(LogType::Notifications, $payload);
+        } catch (Throwable $exception) {
+            $markMessageProcessed->forget($idempotencyKey);
+
+            throw $exception;
+        }
     }
 
     public function failed(?Throwable $exception): void
     {
-        $payload = [
-            'taskId' => (int) $this->task->id,
-            'reason' => $exception?->getMessage() ?: 'Unknown queue failure.',
-        ];
-
-        File::ensureDirectoryExists(storage_path('logs'));
-        File::append(
-            storage_path('logs/failed.log'),
-            json_encode($payload, JSON_THROW_ON_ERROR).PHP_EOL,
+        TaskCompletedNotificationFailed::dispatch(
+            $this->task,
+            $exception?->getMessage() ?: 'Unknown queue failure.',
         );
     }
 }

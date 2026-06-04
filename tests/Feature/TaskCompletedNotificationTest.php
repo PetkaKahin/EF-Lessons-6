@@ -38,12 +38,16 @@ it('queues task completed notification job when task becomes done', function ():
 
 it('writes task completed notification JSON line', function (): void {
     $user = User::factory()->create();
-    $task = Task::factory()->for($user)->create([
-        'status' => TaskStatus::Done,
-    ]);
+
+    do {
+        $task = Task::factory()->for($user)->create([
+            'status' => TaskStatus::Done,
+        ]);
+    } while ($task->id % 5 === 0);
+
     $occurredAt = new DateTimeImmutable('2026-06-02T12:34:56+03:00');
 
-    (new SendTaskCompletedNotification($task, $user->id, $occurredAt))->handle();
+    app()->call([(new SendTaskCompletedNotification($task, $user->id, $occurredAt)), 'handle']);
 
     $lines = array_values(array_filter(
         explode(PHP_EOL, trim(File::get(storage_path('logs/notifications.log')))),
@@ -54,6 +58,34 @@ it('writes task completed notification JSON line', function (): void {
         ->and($payload['userId'])->toBe($user->id)
         ->and($payload['occurredAt'])->toBe('2026-06-02T12:34:56+03:00')
         ->and($payload['channel'])->toBe('email');
+});
+
+it('does not write duplicate notification when message was already processed', function (): void {
+    File::delete(storage_path('logs/notifications.log'));
+
+    $user = User::factory()->create();
+
+    do {
+        $task = Task::factory()->for($user)->create([
+            'status' => TaskStatus::Done,
+        ]);
+    } while ($task->id % 5 === 0);
+
+    $occurredAt = new DateTimeImmutable('2026-06-02T12:34:56+03:00');
+
+    app()->call([(new SendTaskCompletedNotification($task, $user->id, $occurredAt)), 'handle']);
+    app()->call([(new SendTaskCompletedNotification($task, $user->id, $occurredAt)), 'handle']);
+
+    $lines = array_values(array_filter(
+        explode(PHP_EOL, trim(File::get(storage_path('logs/notifications.log')))),
+    ));
+    $payload = json_decode((string) end($lines), true, 512, JSON_THROW_ON_ERROR);
+
+    expect($lines)->toHaveCount(1)
+        ->and($payload['taskId'])->toBe($task->id)
+        ->and(DB::table('processed_messages')
+            ->where('message_key', "notification:{$task->id}")
+            ->count())->toBe(1);
 });
 
 it('configures task completed notification retries and backoff', function (): void {
@@ -81,7 +113,7 @@ it('fails task completed notification when task id is divisible by five', functi
 
     expect($task->id % 5)->toBe(0);
 
-    expect(fn () => (new SendTaskCompletedNotification($task, $user->id, $occurredAt))->handle())
+    expect(fn () => app()->call([(new SendTaskCompletedNotification($task, $user->id, $occurredAt)), 'handle']))
         ->toThrow(RuntimeException::class, "Simulated notification failure for task {$task->id}.");
 });
 
