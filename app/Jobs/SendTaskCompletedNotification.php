@@ -12,12 +12,15 @@ use App\Models\Task;
 use DateTimeInterface;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Support\Sleep;
 use RuntimeException;
 use Throwable;
 
 class SendTaskCompletedNotification implements ShouldQueue
 {
     use Queueable;
+
+    private const NOTIFICATION_RATE_LIMIT_PER_SECOND = 5;
 
     public function __construct(
         public Task $task,
@@ -53,6 +56,8 @@ class SendTaskCompletedNotification implements ShouldQueue
         if (! $markMessageProcessed->handle($idempotencyKey)) {
             return;
         }
+
+        Sleep::usleep((int) ceil(1_000_000 / self::NOTIFICATION_RATE_LIMIT_PER_SECOND));
 
         $payload = [
             'taskId' => $taskId,

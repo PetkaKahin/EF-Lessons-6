@@ -15,6 +15,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Sleep;
 
 uses(RefreshDatabase::class);
 
@@ -136,6 +137,40 @@ it('writes task completed notification JSON line', function (): void {
         ->and($payload['userId'])->toBe($user->id)
         ->and($payload['occurredAt'])->toBe('2026-06-02T12:34:56+03:00')
         ->and($payload['channel'])->toBe('email');
+});
+
+it('throttles task completed notification processing with sleep', function (): void {
+    File::delete(storage_path('logs/notifications.log'));
+
+    $sleepDurations = [];
+
+    Sleep::fake();
+    Sleep::whenFakingSleep(function ($duration) use (&$sleepDurations): void {
+        $sleepDurations[] = (int) $duration->totalMicroseconds;
+    });
+
+    try {
+        $user = User::factory()->create();
+
+        do {
+            $task = Task::factory()->for($user)->create([
+                'status' => TaskStatus::Done,
+            ]);
+        } while ($task->id % 5 === 0);
+
+        $occurredAt = new DateTimeImmutable('2026-06-02T12:34:56+03:00');
+
+        app()->call([(new SendTaskCompletedNotification($task, $user->id, $occurredAt)), 'handle']);
+    } finally {
+        Sleep::fake(false);
+    }
+
+    $lines = array_values(array_filter(
+        explode(PHP_EOL, trim(File::get(storage_path('logs/notifications.log')))),
+    ));
+
+    expect($lines)->toHaveCount(1)
+        ->and($sleepDurations)->toBe([200_000]);
 });
 
 it('does not write duplicate notification when message was already processed', function (): void {
