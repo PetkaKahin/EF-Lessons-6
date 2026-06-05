@@ -4,11 +4,12 @@ declare(strict_types=1);
 
 namespace App\Repositories;
 
+use App\Application\Tasks\Contracts\TaskRepositoryInterface;
 use App\Models\Task;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 
-class EloquentTaskRepository implements TaskRepositoryInterface
+class TaskRepository implements TaskRepositoryInterface
 {
     /**
      * @return LengthAwarePaginator<int, Task>

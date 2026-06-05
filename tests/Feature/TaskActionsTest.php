@@ -3,20 +3,17 @@
 declare(strict_types=1);
 
 use App\Application\Tasks\Actions\UpdateTask;
+use App\Domain\Outbox\Enums\OutboxMessageStatus;
+use App\Domain\Outbox\Enums\OutboxMessageType;
 use App\Domain\Task\Enums\TaskStatus;
-use App\Events\TaskCompleted;
+use App\Models\OutboxMessage;
 use App\Models\Task;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Event;
 
 uses(RefreshDatabase::class);
 
-it('dispatches task completed event from update action', function (): void {
-    Event::fake([
-        TaskCompleted::class,
-    ]);
-
+it('creates task completed outbox message from update action', function (): void {
     $owner = User::factory()->create();
     $task = Task::factory()->for($owner)->create([
         'status' => TaskStatus::InProgress,
@@ -28,10 +25,13 @@ it('dispatches task completed event from update action', function (): void {
         $owner->id,
     );
 
-    Event::assertDispatched(
-        TaskCompleted::class,
-        fn (TaskCompleted $event): bool => $event->task->is($task)
-            && $event->completedByUserId === $owner->id
-            && $event->previousStatus === TaskStatus::InProgress
-    );
+    $outboxMessage = OutboxMessage::query()->firstOrFail();
+
+    expect($outboxMessage->type)->toBe(OutboxMessageType::TaskCompleted)
+        ->and($outboxMessage->status)->toBe(OutboxMessageStatus::New)
+        ->and($outboxMessage->payload['task_id'])->toBe($task->id)
+        ->and($outboxMessage->payload['completed_by_user_id'])->toBe($owner->id)
+        ->and($outboxMessage->payload['status'])->toBe(TaskStatus::Done->value);
+
+    expect(array_key_exists('previous_status', $outboxMessage->payload))->toBeFalse();
 });

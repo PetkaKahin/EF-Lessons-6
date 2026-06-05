@@ -6,10 +6,12 @@ namespace App\Providers;
 
 use App\Application\Notifications\Actions\LogFailedTaskCompletedNotification;
 use App\Application\Notifications\Listeners\QueueTaskCompletedNotification;
+use App\Application\Outbox\Contracts\OutboxRepositoryInterface;
+use App\Application\Tasks\Contracts\TaskRepositoryInterface;
 use App\Events\TaskCompleted;
 use App\Events\TaskCompletedNotificationFailed;
-use App\Repositories\EloquentTaskRepository;
-use App\Repositories\TaskRepositoryInterface;
+use App\Repositories\OutboxRepository;
+use App\Repositories\TaskRepository;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 
@@ -22,7 +24,12 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->app->bind(
             TaskRepositoryInterface::class,
-            EloquentTaskRepository::class
+            TaskRepository::class
+        );
+
+        $this->app->bind(
+            OutboxRepositoryInterface::class,
+            OutboxRepository::class
         );
     }
 

@@ -2,12 +2,13 @@
 
 declare(strict_types=1);
 
+use App\Domain\Outbox\Enums\OutboxMessageStatus;
+use App\Domain\Outbox\Enums\OutboxMessageType;
 use App\Domain\Task\Enums\TaskStatus;
-use App\Events\TaskCompleted;
+use App\Models\OutboxMessage;
 use App\Models\Task;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Event;
 
 uses(RefreshDatabase::class);
 
@@ -137,11 +138,7 @@ it('validates create update and list requests', function (): void {
         ->assertJsonValidationErrors(['user_id', 'per_page', 'page']);
 });
 
-it('dispatches task completed event when task status becomes done', function (): void {
-    Event::fake([
-        TaskCompleted::class,
-    ]);
-
+it('creates task completed outbox message when task status becomes done', function (): void {
     $user = User::factory()->create();
     $task = Task::factory()->for($user)->create([
         'status' => TaskStatus::InProgress,
@@ -154,12 +151,15 @@ it('dispatches task completed event when task status becomes done', function ():
         ->assertOk()
         ->assertJsonPath('data.status', TaskStatus::Done->value);
 
-    Event::assertDispatched(
-        TaskCompleted::class,
-        fn (TaskCompleted $event): bool => $event->task->is($task)
-            && $event->completedByUserId === $user->id
-            && $event->previousStatus === TaskStatus::InProgress
-    );
+    $outboxMessage = OutboxMessage::query()->firstOrFail();
+
+    expect($outboxMessage->type)->toBe(OutboxMessageType::TaskCompleted)
+        ->and($outboxMessage->status)->toBe(OutboxMessageStatus::New)
+        ->and($outboxMessage->payload['task_id'])->toBe($task->id)
+        ->and($outboxMessage->payload['completed_by_user_id'])->toBe($user->id)
+        ->and($outboxMessage->payload['status'])->toBe(TaskStatus::Done->value);
+
+    expect(array_key_exists('previous_status', $outboxMessage->payload))->toBeFalse();
 });
 
 it('returns validation error for invalid task status transition', function (): void {

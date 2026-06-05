@@ -23,6 +23,9 @@ composer:
 artisan:
 	$(COMPOSE) exec php php artisan $(ARGS)
 
+seed:
+	$(COMPOSE) exec php php artisan db:seed
+
 test:
 	$(COMPOSE) exec php ./vendor/bin/pest
 

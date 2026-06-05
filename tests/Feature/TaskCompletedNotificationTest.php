@@ -2,9 +2,13 @@
 
 declare(strict_types=1);
 
+use App\Application\Outbox\Actions\PublishOutboxMessages;
 use App\Application\Tasks\Actions\UpdateTask;
+use App\Domain\Outbox\Enums\OutboxMessageStatus;
+use App\Domain\Outbox\Enums\OutboxMessageType;
 use App\Domain\Task\Enums\TaskStatus;
 use App\Jobs\SendTaskCompletedNotification;
+use App\Models\OutboxMessage;
 use App\Models\Task;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -14,7 +18,82 @@ use Illuminate\Support\Facades\Queue;
 
 uses(RefreshDatabase::class);
 
-it('queues task completed notification job when task becomes done', function (): void {
+it('queues task completed notification job when task completed outbox message is published', function (): void {
+    Queue::fake([SendTaskCompletedNotification::class]);
+    File::delete(storage_path('logs/outbox.log'));
+
+    $user = User::factory()->create();
+    $task = Task::factory()->for($user)->create([
+        'status' => TaskStatus::InProgress,
+    ]);
+
+    app(UpdateTask::class)->handle(
+        $task,
+        ['status' => TaskStatus::Done->value],
+        $user->id,
+    );
+
+    $lines = array_values(array_filter(
+        explode(PHP_EOL, trim(File::get(storage_path('logs/outbox.log')))),
+    ));
+    $createdLog = json_decode($lines[0], true, 512, JSON_THROW_ON_ERROR);
+
+    expect($createdLog['action'])->toBe('created')
+        ->and($createdLog['type'])->toBe(OutboxMessageType::TaskCompleted->value)
+        ->and($createdLog['payload']['task_id'])->toBe($task->id)
+        ->and($createdLog['payload']['status'])->toBe(TaskStatus::Done->value);
+
+    Queue::assertNothingPushed();
+
+    $published = app(PublishOutboxMessages::class)->handle();
+    $lines = array_values(array_filter(
+        explode(PHP_EOL, trim(File::get(storage_path('logs/outbox.log')))),
+    ));
+    $publishedLog = json_decode($lines[1], true, 512, JSON_THROW_ON_ERROR);
+
+    expect($published)->toBe(1)
+        ->and(OutboxMessage::query()->firstOrFail()->status)->toBe(OutboxMessageStatus::Published)
+        ->and($lines)->toHaveCount(2)
+        ->and($publishedLog['action'])->toBe('published')
+        ->and($publishedLog['type'])->toBe(OutboxMessageType::TaskCompleted->value)
+        ->and($publishedLog['payload']['task_id'])->toBe($task->id);
+
+    Queue::assertPushed(SendTaskCompletedNotification::class, 1);
+    Queue::assertPushed(
+        SendTaskCompletedNotification::class,
+        fn (SendTaskCompletedNotification $job): bool => $job->task->is($task)
+            && $job->userId === $user->id
+    );
+});
+
+it('keeps outbox message new when publishing fails', function (): void {
+    File::delete(storage_path('logs/outbox.log'));
+
+    OutboxMessage::query()->create([
+        'type' => OutboxMessageType::TaskCompleted,
+        'payload' => [
+            'task_id' => 999999,
+            'user_id' => 1,
+            'completed_by_user_id' => 1,
+            'status' => TaskStatus::Done->value,
+        ],
+        'status' => OutboxMessageStatus::New,
+    ]);
+
+    $published = app(PublishOutboxMessages::class)->handle();
+    $lines = array_values(array_filter(
+        explode(PHP_EOL, trim(File::get(storage_path('logs/outbox.log')))),
+    ));
+    $failedLog = json_decode($lines[0], true, 512, JSON_THROW_ON_ERROR);
+
+    expect($published)->toBe(0)
+        ->and(OutboxMessage::query()->firstOrFail()->status)->toBe(OutboxMessageStatus::New)
+        ->and($failedLog['action'])->toBe('publish_failed')
+        ->and($failedLog['type'])->toBe(OutboxMessageType::TaskCompleted->value)
+        ->and($failedLog['payload']['task_id'])->toBe(999999);
+});
+
+it('publishes outbox messages with artisan command', function (): void {
     Queue::fake([SendTaskCompletedNotification::class]);
 
     $user = User::factory()->create();
@@ -28,12 +107,11 @@ it('queues task completed notification job when task becomes done', function ():
         $user->id,
     );
 
+    $this->artisan('outbox:publish', ['--limit' => 1])
+        ->expectsOutput('Published 1 outbox messages')
+        ->assertSuccessful();
+
     Queue::assertPushed(SendTaskCompletedNotification::class, 1);
-    Queue::assertPushed(
-        SendTaskCompletedNotification::class,
-        fn (SendTaskCompletedNotification $job): bool => $job->task->is($task)
-            && $job->userId === $user->id
-    );
 });
 
 it('writes task completed notification JSON line', function (): void {

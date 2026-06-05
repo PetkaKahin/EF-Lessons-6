@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace App\Application\Tasks\Actions;
 
+use App\Application\Tasks\Contracts\TaskRepositoryInterface;
 use App\Domain\Task\Enums\TaskStatus;
 use App\Domain\Task\Task as DomainTask;
 use App\Models\Task;
-use App\Repositories\TaskRepositoryInterface;
 use DateTimeImmutable;
 
 class CreateTask

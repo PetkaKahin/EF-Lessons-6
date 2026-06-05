@@ -8,6 +8,7 @@ enum LogType: string
 {
     case Notifications = 'notifications';
     case Failed = 'failed';
+    case Outbox = 'outbox';
 
     public function filename(): string
     {

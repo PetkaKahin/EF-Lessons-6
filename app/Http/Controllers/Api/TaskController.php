@@ -6,12 +6,12 @@ namespace App\Http\Controllers\Api;
 
 use App\Application\Tasks\Actions\CreateTask;
 use App\Application\Tasks\Actions\UpdateTask;
+use App\Application\Tasks\Contracts\TaskRepositoryInterface;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Task\IndexTaskRequest;
 use App\Http\Requests\Task\StoreTaskRequest;
 use App\Http\Requests\Task\UpdateTaskRequest;
 use App\Http\Resources\TaskResource;
-use App\Repositories\TaskRepositoryInterface;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
