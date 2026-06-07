@@ -12,8 +12,9 @@ class QueueTaskCompletedNotification
     public function handle(TaskCompleted $event): void
     {
         SendTaskCompletedNotification::dispatch(
-            $event->task,
-            $event->completedByUserId ?? (int) $event->task->user_id,
+            $event->taskId,
+            $event->userId,
+            $event->status,
             $event->occurredAt,
         );
     }

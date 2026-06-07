@@ -19,7 +19,7 @@ it('dispatches ten ping jobs', function (): void {
 it('writes log line with timestamp when ping job is handled', function (): void {
     Log::spy();
 
-    (new PingJob())->handle();
+    (new PingJob)->handle();
 
     Log::shouldHaveReceived('info')
         ->once()

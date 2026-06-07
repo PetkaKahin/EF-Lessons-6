@@ -63,6 +63,7 @@ class UpdateTask
                     'user_id' => (int) $task->user_id,
                     'completed_by_user_id' => $actorId,
                     'status' => $domainTask->status->value,
+                    'occurred_at' => (new DateTimeImmutable)->format(DATE_ATOM),
                 ];
 
                 $this->outboxMessages->create(OutboxMessage::new(

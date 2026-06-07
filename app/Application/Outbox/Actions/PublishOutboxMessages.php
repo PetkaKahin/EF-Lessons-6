@@ -7,18 +7,17 @@ namespace App\Application\Outbox\Actions;
 use App\Application\Logs\Actions\AppendJsonLogLine;
 use App\Application\Logs\Enums\LogType;
 use App\Application\Outbox\Contracts\OutboxRepositoryInterface;
-use App\Application\Tasks\Contracts\TaskRepositoryInterface;
 use App\Domain\Outbox\Enums\OutboxMessageType;
 use App\Domain\Outbox\OutboxMessage;
 use App\Domain\Task\Enums\TaskStatus;
 use App\Events\TaskCompleted;
+use DateTimeImmutable;
 use Throwable;
 
 class PublishOutboxMessages
 {
     public function __construct(
         private OutboxRepositoryInterface $outboxMessages,
-        private TaskRepositoryInterface $tasks,
         private AppendJsonLogLine $appendJsonLogLine,
     ) {}
 
@@ -63,12 +62,14 @@ class PublishOutboxMessages
     private function publishTaskCompleted(OutboxMessage $outboxMessage): void
     {
         $payload = $outboxMessage->payload;
-        $task = $this->tasks->findOrFail((int) $payload['task_id']);
 
         TaskCompleted::dispatch(
-            $task,
+            (int) $payload['task_id'],
+            (int) $payload['user_id'],
             (int) $payload['completed_by_user_id'],
+            TaskStatus::from((string) $payload['status']),
             TaskStatus::InProgress,
+            new DateTimeImmutable((string) $payload['occurred_at']),
         );
     }
 }

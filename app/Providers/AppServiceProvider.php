@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Providers;
 
 use App\Application\Notifications\Actions\LogFailedTaskCompletedNotification;
+use App\Application\Notifications\Contracts\WebhookAttemptRepositoryInterface;
 use App\Application\Notifications\Listeners\QueueTaskCompletedNotification;
 use App\Application\Outbox\Contracts\OutboxRepositoryInterface;
 use App\Application\Tasks\Contracts\TaskRepositoryInterface;
@@ -12,6 +13,7 @@ use App\Events\TaskCompleted;
 use App\Events\TaskCompletedNotificationFailed;
 use App\Repositories\OutboxRepository;
 use App\Repositories\TaskRepository;
+use App\Repositories\WebhookAttemptRepository;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 
@@ -30,6 +32,11 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(
             OutboxRepositoryInterface::class,
             OutboxRepository::class
+        );
+
+        $this->app->bind(
+            WebhookAttemptRepositoryInterface::class,
+            WebhookAttemptRepository::class
         );
     }
 

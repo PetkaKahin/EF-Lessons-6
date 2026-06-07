@@ -17,7 +17,7 @@ readonly class LogFailedTaskCompletedNotification
     public function handle(TaskCompletedNotificationFailed $event): void
     {
         $this->appendJsonLogLine->handle(LogType::Failed, [
-            'taskId' => (int) $event->task->id,
+            'taskId' => $event->taskId,
             'reason' => $event->reason,
         ]);
     }
