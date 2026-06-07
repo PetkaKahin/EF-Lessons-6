@@ -8,7 +8,10 @@ use Illuminate\Support\Facades\DB;
 
 class MarkMessageProcessed
 {
-    public function handle(string $key): bool
+    /**
+     * Возвращает `true` если ключ был сохранён 1-й раз
+     */
+    public function tryMarkAsProcessed(string $key): bool
     {
         $now = now();
 

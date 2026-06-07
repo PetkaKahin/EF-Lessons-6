@@ -4,7 +4,8 @@ declare(strict_types=1);
 
 namespace App\Jobs;
 
-use App\Application\Notifications\Actions\DeliverTaskCompletedWebhook;
+use App\Application\Messages\Actions\MarkMessageProcessed;
+use App\Application\Notifications\Actions\SendTaskCompletedWebhook;
 use App\Domain\Task\Enums\TaskStatus;
 use App\Events\TaskCompletedNotificationFailed;
 use DateTimeInterface;
@@ -36,9 +37,23 @@ class SendTaskCompletedNotification implements ShouldQueue
         return [5, 15, 30];
     }
 
-    public function handle(DeliverTaskCompletedWebhook $deliverTaskCompletedWebhook): void
-    {
-        $deliverTaskCompletedWebhook->handle($this->taskId, $this->status, $this->occurredAt);
+    public function handle(
+        SendTaskCompletedWebhook $sendTaskCompletedWebhook,
+        MarkMessageProcessed $processedMessages,
+    ): void {
+        $idempotencyKey = "notification:{$this->taskId}";
+
+        if (! $processedMessages->tryMarkAsProcessed($idempotencyKey)) {
+            return;
+        }
+
+        try {
+            $sendTaskCompletedWebhook->send($this->taskId, $this->status, $this->occurredAt);
+        } catch (Throwable $exception) {
+            $processedMessages->forget($idempotencyKey);
+
+            throw $exception;
+        }
     }
 
     public function failed(?Throwable $exception): void

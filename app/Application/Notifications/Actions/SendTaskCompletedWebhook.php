@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Application\Notifications\Actions;
 
-use App\Application\Messages\Actions\MarkMessageProcessed;
 use App\Application\Notifications\Contracts\WebhookAttemptRepositoryInterface;
 use App\Domain\Task\Enums\TaskStatus;
 use DateTimeInterface;
@@ -13,23 +12,17 @@ use Illuminate\Support\Sleep;
 use RuntimeException;
 use Throwable;
 
-readonly class DeliverTaskCompletedWebhook
+readonly class SendTaskCompletedWebhook
 {
     private const NOTIFICATION_RATE_LIMIT_PER_SECOND = 5;
 
     public function __construct(
         private WebhookAttemptRepositoryInterface $webhookAttempts,
-        private MarkMessageProcessed $processedMessages,
     ) {}
 
-    public function handle(int $taskId, TaskStatus $status, DateTimeInterface $occurredAt): void
+    public function send(int $taskId, TaskStatus $status, DateTimeInterface $occurredAt): void
     {
-        $idempotencyKey = (string) $taskId;
-        $processedKey = "notification:{$taskId}";
-
-        if (! $this->processedMessages->handle($processedKey)) {
-            return;
-        }
+        $webhookIdempotencyKey = (string) $taskId;
 
         Sleep::usleep((int) ceil(1_000_000 / self::NOTIFICATION_RATE_LIMIT_PER_SECOND));
 
@@ -52,7 +45,7 @@ readonly class DeliverTaskCompletedWebhook
             }
 
             $response = Http::timeout($this->webhookTimeout())
-                ->withHeaders(['Idempotency-Key' => $idempotencyKey])
+                ->withHeaders(['Idempotency-Key' => $webhookIdempotencyKey])
                 ->post($url, $payload);
 
             $responseStatus = $response->status();
@@ -62,13 +55,12 @@ readonly class DeliverTaskCompletedWebhook
             }
         } catch (Throwable $exception) {
             $error = $exception->getMessage();
-            $this->processedMessages->forget($processedKey);
 
             throw $exception;
         } finally {
             $this->webhookAttempts->create([
                 'task_id' => $taskId,
-                'idempotency_key' => $idempotencyKey,
+                'idempotency_key' => $webhookIdempotencyKey,
                 'url' => $url,
                 'payload' => $payload,
                 'response_status' => $responseStatus,
