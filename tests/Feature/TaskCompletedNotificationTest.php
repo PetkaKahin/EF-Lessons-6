@@ -151,14 +151,16 @@ it('publishes outbox messages with artisan command', function (): void {
 it('posts task completed webhook and logs attempt', function (): void {
     $url = 'https://example.test/webhooks/tasks/completed';
     $timeout = null;
+    $processedMessagesBeforeRequest = null;
 
     config([
         'services.notifications.webhook_url' => $url,
         'services.notifications.webhook_timeout' => 7,
     ]);
 
-    Http::fake(function ($request, array $options) use (&$timeout) {
+    Http::fake(function ($request, array $options) use (&$timeout, &$processedMessagesBeforeRequest) {
         $timeout = $options['timeout'];
+        $processedMessagesBeforeRequest = DB::table('processed_messages')->count();
 
         return Http::response(['ok' => true], 200);
     });
@@ -194,6 +196,7 @@ it('posts task completed webhook and logs attempt', function (): void {
         && $request['occurredAt'] === '2026-06-02T12:34:56+03:00');
 
     expect($timeout)->toBe(7)
+        ->and($processedMessagesBeforeRequest)->toBe(0)
         ->and($attempt->task_id)->toBe($task->id)
         ->and($attempt->idempotency_key)->toBe((string) $task->id)
         ->and($attempt->url)->toBe($url)
@@ -201,7 +204,10 @@ it('posts task completed webhook and logs attempt', function (): void {
         ->and($attempt->error)->toBeNull()
         ->and($payload['taskId'])->toBe($task->id)
         ->and($payload['status'])->toBe(TaskStatus::Done->value)
-        ->and($payload['occurredAt'])->toBe('2026-06-02T12:34:56+03:00');
+        ->and($payload['occurredAt'])->toBe('2026-06-02T12:34:56+03:00')
+        ->and(DB::table('processed_messages')
+            ->where('message_key', "notification:{$task->id}")
+            ->count())->toBe(1);
 });
 
 it('does not deliver duplicate webhook when notification was already processed', function (): void {
@@ -319,7 +325,10 @@ it('fails task completed notification when task id is divisible by five and logs
     expect(DB::table('webhook_attempts')->count())->toBe(1)
         ->and($attempt->task_id)->toBe($task->id)
         ->and($attempt->error)->toBe("Simulated notification failure for task {$task->id}")
-        ->and($attempt->response_status)->toBeNull();
+        ->and($attempt->response_status)->toBeNull()
+        ->and(DB::table('processed_messages')
+            ->where('message_key', "notification:{$task->id}")
+            ->count())->toBe(0);
 
     Http::assertNothingSent();
 });
@@ -355,7 +364,10 @@ it('fails task completed webhook when endpoint returns server error', function (
 
     expect($attempt->task_id)->toBe($task->id)
         ->and($attempt->response_status)->toBe(500)
-        ->and($attempt->error)->toBe('Webhook delivery failed with status 500');
+        ->and($attempt->error)->toBe('Webhook delivery failed with status 500')
+        ->and(DB::table('processed_messages')
+            ->where('message_key', "notification:{$task->id}")
+            ->count())->toBe(0);
 });
 
 it('stores failed notification in failed jobs and writes failed log after three attempts', function (): void {
@@ -415,5 +427,8 @@ it('stores failed notification in failed jobs and writes failed log after three 
         ->and($failedJob->exception)->toContain('Webhook delivery failed with status 500')
         ->and($payload['taskId'])->toBe($task->id)
         ->and($payload['reason'])->toBe('Webhook delivery failed with status 500')
-        ->and(DB::table('webhook_attempts')->count())->toBe(3);
+        ->and(DB::table('webhook_attempts')->count())->toBe(3)
+        ->and(DB::table('processed_messages')
+            ->where('message_key', "notification:{$task->id}")
+            ->count())->toBe(0);
 });

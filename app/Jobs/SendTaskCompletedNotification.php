@@ -43,17 +43,13 @@ class SendTaskCompletedNotification implements ShouldQueue
     ): void {
         $idempotencyKey = "notification:{$this->taskId}";
 
-        if (! $processedMessages->tryMarkAsProcessed($idempotencyKey)) {
+        if ($processedMessages->isProcessed($idempotencyKey)) {
             return;
         }
 
-        try {
-            $sendTaskCompletedWebhook->send($this->taskId, $this->status, $this->occurredAt);
-        } catch (Throwable $exception) {
-            $processedMessages->forget($idempotencyKey);
+        $sendTaskCompletedWebhook->send($this->taskId, $this->status, $this->occurredAt);
 
-            throw $exception;
-        }
+        $processedMessages->markAsProcessed($idempotencyKey);
     }
 
     public function failed(?Throwable $exception): void
